@@ -4,11 +4,10 @@ import axios from "axios";
 const app = express();
 app.use(express.json());
 
-// Env vars set in Render dashboard
+// Proxy access key stored securely in Render env vars
 const PROXY_ACCESS_KEY = process.env.PROXY_ACCESS_KEY || "my_secret_key";
-const TARGET_API_KEY = process.env.TARGET_API_KEY || "target_api_key_here";
 
-// Log outbound static IP when service starts
+// Log outbound static IP on start
 (async () => {
   try {
     const res = await axios.get("https://api.ipify.org?format=json");
@@ -18,27 +17,45 @@ const TARGET_API_KEY = process.env.TARGET_API_KEY || "target_api_key_here";
   }
 })();
 
-// Root health-check
+// Health check root endpoint
 app.get("/", (req, res) => {
   res.json({ status: "Render proxy is running" });
 });
 
-// Secure proxy endpoint
+// Endpoint to check outbound IP
+app.get("/myip", async (req, res) => {
+  try {
+    const ipRes = await axios.get("https://api.ipify.org?format=json");
+    res.json({ outboundIP: ipRes.data.ip });
+  } catch (err) {
+    res.status(500).json({ error: "Could not fetch outbound IP" });
+  }
+});
+
+// Proxy POST endpoint
 app.post("/proxy", async (req, res) => {
-  // Protect access
+  // 1. Check proxy access key in request header
   if (req.headers["x-api-key"] !== PROXY_ACCESS_KEY) {
-    return res.status(401).json({ error: "Unauthorized" });
+    return res.status(401).json({ error: "Unauthorized: Invalid proxy key" });
   }
 
   try {
-    const { url, method = "GET", data = {}, headers = {} } = req.body;
+    const { url, method = "GET", data = {}, headers = {}, targetApiKey } = req.body;
 
-    // Add target API key
+    if (!url) {
+      return res.status(400).json({ error: "Missing 'url' in request body" });
+    }
+    if (!targetApiKey) {
+      return res.status(400).json({ error: "Missing 'targetApiKey' in request body" });
+    }
+
+    // Merge headers and add target API key
     const outboundHeaders = {
       ...headers,
-      "x-api-key": TARGET_API_KEY
+      "x-api-key": targetApiKey
     };
 
+    // Make outbound request
     const response = await axios({
       url,
       method,
@@ -47,6 +64,7 @@ app.post("/proxy", async (req, res) => {
       timeout: 15000
     });
 
+    // Return target API response
     res.status(response.status).json(response.data);
   } catch (err) {
     console.error("Proxy error:", err.message);
@@ -54,16 +72,6 @@ app.post("/proxy", async (req, res) => {
       error: err.message,
       details: err.response?.data || null
     });
-  }
-});
-
-// Outbound IP check
-app.get("/myip", async (req, res) => {
-  try {
-    const ipRes = await axios.get("https://api.ipify.org?format=json");
-    res.json({ outboundIP: ipRes.data.ip });
-  } catch (err) {
-    res.status(500).json({ error: "Could not fetch outbound IP" });
   }
 });
 
