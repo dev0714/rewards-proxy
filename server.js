@@ -4,14 +4,23 @@ import axios from "axios";
 const app = express();
 app.use(express.json());
 
-// API key to protect your proxy from unauthorized use
+// Environment variables (set in Render dashboard)
 const PROXY_ACCESS_KEY = process.env.PROXY_ACCESS_KEY || "my_secret_key";
-
-// The x-api-key for the target API you want to call
 const TARGET_API_KEY = process.env.TARGET_API_KEY || "target_api_key_here";
 
+// Log outbound static IP when service starts
+(async () => {
+  try {
+    const res = await axios.get("https://api.ipify.org?format=json");
+    console.log("Outbound static IP:", res.data.ip);
+  } catch (err) {
+    console.error("Could not fetch outbound IP:", err.message);
+  }
+})();
+
+// Secure proxy endpoint
 app.post("/proxy", async (req, res) => {
-  // 1. Check if incoming request has correct proxy key
+  // Check access key
   if (req.headers["x-api-key"] !== PROXY_ACCESS_KEY) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -19,7 +28,7 @@ app.post("/proxy", async (req, res) => {
   try {
     const { url, method = "GET", data = {}, headers = {} } = req.body;
 
-    // 2. Always include the target API key in outbound calls
+    // Outbound request with target API key
     const outboundHeaders = {
       ...headers,
       "x-api-key": TARGET_API_KEY
@@ -30,15 +39,26 @@ app.post("/proxy", async (req, res) => {
       method,
       data,
       headers: outboundHeaders,
-      timeout: 10000
+      timeout: 15000
     });
 
     res.status(response.status).json(response.data);
   } catch (err) {
+    console.error("Proxy error:", err.message);
     res.status(500).json({
       error: err.message,
       details: err.response?.data || null
     });
+  }
+});
+
+// Check outbound IP endpoint
+app.get("/myip", async (req, res) => {
+  try {
+    const ipRes = await axios.get("https://api.ipify.org?format=json");
+    res.json({ outboundIP: ipRes.data.ip });
+  } catch (err) {
+    res.status(500).json({ error: "Could not fetch outbound IP" });
   }
 });
 
