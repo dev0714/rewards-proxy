@@ -4,7 +4,7 @@ import axios from "axios";
 const app = express();
 app.use(express.json());
 
-// Environment variables (set in Render dashboard)
+// Env vars set in Render dashboard
 const PROXY_ACCESS_KEY = process.env.PROXY_ACCESS_KEY || "my_secret_key";
 const TARGET_API_KEY = process.env.TARGET_API_KEY || "target_api_key_here";
 
@@ -18,9 +18,14 @@ const TARGET_API_KEY = process.env.TARGET_API_KEY || "target_api_key_here";
   }
 })();
 
+// Root health-check
+app.get("/", (req, res) => {
+  res.json({ status: "Render proxy is running" });
+});
+
 // Secure proxy endpoint
 app.post("/proxy", async (req, res) => {
-  // Check access key
+  // Protect access
   if (req.headers["x-api-key"] !== PROXY_ACCESS_KEY) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -28,7 +33,7 @@ app.post("/proxy", async (req, res) => {
   try {
     const { url, method = "GET", data = {}, headers = {} } = req.body;
 
-    // Outbound request with target API key
+    // Add target API key
     const outboundHeaders = {
       ...headers,
       "x-api-key": TARGET_API_KEY
@@ -52,7 +57,7 @@ app.post("/proxy", async (req, res) => {
   }
 });
 
-// Check outbound IP endpoint
+// Outbound IP check
 app.get("/myip", async (req, res) => {
   try {
     const ipRes = await axios.get("https://api.ipify.org?format=json");
